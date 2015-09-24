@@ -1,0 +1,5 @@
+*.bak
+tags
+greybox_tmp
+.qsys_edit
+qmegawiz_errors_log.txt
