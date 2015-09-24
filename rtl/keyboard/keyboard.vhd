@@ -1,63 +1,106 @@
--------------------------------------------------------------------[17.05.2015]
--- KEYBOARD CONTROLLER USB HID scancode to Spectrum matrix conversion
+-------------------------------------------------------------------[09.09.2014]
+-- KEYBOARD CONTROLLER PS/2 scancode to Spectrum matrix conversion
 -------------------------------------------------------------------------------
--- Engineer: 	MVV
---
--- 15.05.2015	Initial release
--------------------------------------------------------------------------------
+-- V0.1 	05.10.2011	первая версия
+-- V0.2		16.03.2014	измененмия в key_f (активная клавиша теперь устанавливается в '1')
+-- V0.3		09.09.2014
 
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
-use IEEE.NUMERIC_STD.ALL;
+use IEEE.STD_LOGIC_ARITH.ALL;
+use IEEE.STD_LOGIC_UNSIGNED.ALL;
 
 entity keyboard is
+generic (
+	-- Include code for LED status updates
+	ledStatusSupport : boolean := true;
+	-- Number of system-cycles used for PS/2 clock filtering
+	clockFilter : integer := 15;
+	-- Timer calibration
+	ticksPerUsec : integer := 28 );  -- 28Mhz clock
 port (
-	CLK_I		: in std_logic;
-	RESET_I		: in std_logic;
-	ADDR_I		: in std_logic_vector(7 downto 0);
-	KEYB_O		: out std_logic_vector(4 downto 0);
-	KEYF_O		: out std_logic_vector(12 downto 1);
-	KEYJOY_O	: out std_logic_vector(4 downto 0);
-	KEYRESET_O	: out std_logic;
-	RX_I		: in std_logic);
+	CLK		: in std_logic;
+	RESET		: in std_logic;
+	A		: in std_logic_vector(7 downto 0);
+	KEYB		: out std_logic_vector(4 downto 0);
+	KEYF		: out std_logic_vector(4 downto 0);
+	KEYJOY		: out std_logic_vector(4 downto 0);
+	KEYLED		: in std_logic_vector(2 downto 0);
+	SCANCODE	: out std_logic_vector(7 downto 0);
+	PS2_KBCLK	: inout std_logic;
+	PS2_KBDAT	: inout std_logic );
 end keyboard;
 
 architecture rtl of keyboard is
--- Interface to RX_I block
-signal keyb_data	: std_logic_vector(7 downto 0);
-
--- Internal signals
-type key_matrix is array (11 downto 0) of std_logic_vector(4 downto 0);
+type key_matrix is array (7 downto 0) of std_logic_vector(4 downto 0);
 signal keys		: key_matrix;
+signal release		: std_logic;
+signal extended		: std_logic;
+-- This pulses high for one tick when a new byte is received from the keyboard
+signal data		: std_logic_vector(7 downto 0);
+signal valid		: std_logic;
+signal key_f		: std_logic_vector(4 downto 0) := "00000";
+signal key_joy		: std_logic_vector(4 downto 0) := "00000";
+signal caps_lock	: std_logic;
+signal num_lock		: std_logic;
+signal scroll_lock	: std_logic;
+signal ps2_clk_out	: std_logic;
+signal ps2_dat_out	: std_logic;
 signal row0, row1, row2, row3, row4, row5, row6, row7 : std_logic_vector(4 downto 0);
+signal scan		: std_logic_vector(7 downto 0);
 
 begin
-
-	inst_rx : entity work.receiver
+	Ps2Keyboard : entity work.io_ps2_keyboard
+	generic map (
+		ledStatusSupport => ledStatusSupport,
+		clockFilter => clockFilter,
+		ticksPerUsec => ticksPerUsec )
 	port map (
-		CLK_I	=> CLK_I,
-		RESET_I	=> RESET_I,
-		RX_I	=> RX_I,
-		DATA_O	=> keyb_data);
+		clk => CLK,
+		reset => RESET,
+		
+		-- PS/2 connector
+		ps2_clk_in => PS2_KBCLK,
+		ps2_dat_in => PS2_KBDAT,
+		ps2_clk_out => ps2_clk_out,
+		ps2_dat_out => ps2_dat_out,
+
+		-- LED status
+		caps_lock => caps_lock,
+		num_lock => num_lock,
+		scroll_lock => scroll_lock,
+
+		-- Read scancode
+		trigger => valid,
+		scancode => data );
 
 	-- Output addressed row to ULA
-	row0 <= keys(0) when ADDR_I(0) = '0' else (others => '1');
-	row1 <= keys(1) when ADDR_I(1) = '0' else (others => '1');
-	row2 <= keys(2) when ADDR_I(2) = '0' else (others => '1');
-	row3 <= keys(3) when ADDR_I(3) = '0' else (others => '1');
-	row4 <= keys(4) when ADDR_I(4) = '0' else (others => '1');
-	row5 <= keys(5) when ADDR_I(5) = '0' else (others => '1');
-	row6 <= keys(6) when ADDR_I(6) = '0' else (others => '1');
-	row7 <= keys(7) when ADDR_I(7) = '0' else (others => '1');
-	KEYB_O <= row0 and row1 and row2 and row3 and row4 and row5 and row6 and row7;
+	row0 <= keys(0) when A(0) = '0' else (others => '1');
+	row1 <= keys(1) when A(1) = '0' else (others => '1');
+	row2 <= keys(2) when A(2) = '0' else (others => '1');
+	row3 <= keys(3) when A(3) = '0' else (others => '1');
+	row4 <= keys(4) when A(4) = '0' else (others => '1');
+	row5 <= keys(5) when A(5) = '0' else (others => '1');
+	row6 <= keys(6) when A(6) = '0' else (others => '1');
+	row7 <= keys(7) when A(7) = '0' else (others => '1');
+	KEYB <= row0 and row1 and row2 and row3 and row4 and row5 and row6 and row7;
+		
+	KEYJOY 		<= key_joy;
+	KEYF 		<= key_f;
+	SCANCODE	<= scan;
+	num_lock 	<= KEYLED(2);
+	caps_lock 	<= KEYLED(1);
+	scroll_lock 	<= KEYLED(0);
 
-	KEYJOY_O 	<= keys(8);
-	KEYRESET_O 	<= keys(11)(2);
-	KEYF_O 		<= keys(11)(1) & keys(11)(0) & keys(10) & keys(9);
-	
-	process (RESET_I, CLK_I, keyb_data)
+	PS2_KBCLK <= '0' when ps2_clk_out = '0' else 'Z';
+	PS2_KBDAT <= '0' when ps2_dat_out = '0' else 'Z';
+
+	process (RESET, CLK)
 	begin
-		if RESET_I = '1' then
+		if RESET = '1' then
+			release <= '0';
+			extended <= '0';
+			
 			keys(0) <= (others => '1');
 			keys(1) <= (others => '1');
 			keys(2) <= (others => '1');
@@ -66,162 +109,146 @@ begin
 			keys(5) <= (others => '1');
 			keys(6) <= (others => '1');
 			keys(7) <= (others => '1');
-			keys(8) <= (others => '0');
-			keys(9) <= (others => '0');
-			keys(10) <= (others => '0');
-			keys(11) <= (others => '0');
 			
-		elsif CLK_I'event and CLK_I = '1' then
-			case keyb_data is
-				when X"02" =>
-					keys(0) <= (others => '1');
-					keys(1) <= (others => '1');
-					keys(2) <= (others => '1');
-					keys(3) <= (others => '1');
-					keys(4) <= (others => '1');
-					keys(5) <= (others => '1');
-					keys(6) <= (others => '1');
-					keys(7) <= (others => '1');
-					keys(8) <= (others => '0');
-					keys(9) <= (others => '0');
-					keys(10) <= (others => '0');
-					keys(11) <= (others => '0');
+			key_f 	<= (others => '0');
+			key_joy <= (others => '0');
+			scan	<= (others => '0');
 
-				when X"e1" => keys(0)(0) <= '0'; -- Left  shift (CAPS SHIFT)
-				when X"e5" => keys(0)(0) <= '0'; -- Right shift (CAPS SHIFT)
-				when X"1d" => keys(0)(1) <= '0'; -- Z
-				when X"1b" => keys(0)(2) <= '0'; -- X
-				when X"06" => keys(0)(3) <= '0'; -- C
-				when X"19" => keys(0)(4) <= '0'; -- V
+		elsif rising_edge (CLK) then
+			if valid = '1' then
+				if release = '0' then
+					scan <= data;
+				else
+					scan <= x"FF";
+				end if;
 
-				when X"04" => keys(1)(0) <= '0'; -- ADDR_I
-				when X"16" => keys(1)(1) <= '0'; -- S
-				when X"07" => keys(1)(2) <= '0'; -- D
-				when X"09" => keys(1)(3) <= '0'; -- F
-				when X"0a" => keys(1)(4) <= '0'; -- G
+				if data = X"E0" then
+					-- Extended key code follows
+					extended <= '1';
+				elsif data = X"F0" then
+					-- Release code follows
+					release <= '1';
+				else
+					-- Cancel extended/release flags for next time
+					release <= '0';
+					extended <= '0';
+				end if;
+				case extended & std_logic_vector(data) is					
+					when '0' & X"12" => keys(0)(0) <= release; -- Left shift (CAPS SHIFT)
+					when '0' & X"59" => keys(0)(0) <= release; -- Right shift (CAPS SHIFT)
+					when '0' & X"1A" => keys(0)(1) <= release; -- Z
+					when '0' & X"22" => keys(0)(2) <= release; -- X
+					when '0' & X"21" => keys(0)(3) <= release; -- C
+					when '0' & X"2A" => keys(0)(4) <= release; -- V
+					
+					when '0' & X"1C" => keys(1)(0) <= release; -- A
+					when '0' & X"1B" => keys(1)(1) <= release; -- S
+					when '0' & X"23" => keys(1)(2) <= release; -- D
+					when '0' & X"2B" => keys(1)(3) <= release; -- F
+					when '0' & X"34" => keys(1)(4) <= release; -- G
+					
+					when '0' & X"15" => keys(2)(0) <= release; -- Q
+					when '0' & X"1D" => keys(2)(1) <= release; -- W
+					when '0' & X"24" => keys(2)(2) <= release; -- E
+					when '0' & X"2D" => keys(2)(3) <= release; -- R
+					when '0' & X"2C" => keys(2)(4) <= release; -- T				
+				
+					when '0' & X"16" => keys(3)(0) <= release; -- 1
+					when '0' & X"1E" => keys(3)(1) <= release; -- 2
+					when '0' & X"26" => keys(3)(2) <= release; -- 3
+					when '0' & X"25" => keys(3)(3) <= release; -- 4
+					when '0' & X"2E" => keys(3)(4) <= release; -- 5			
+					
+					when '0' & X"45" => keys(4)(0) <= release; -- 0
+					when '0' & X"46" => keys(4)(1) <= release; -- 9
+					when '0' & X"3E" => keys(4)(2) <= release; -- 8
+					when '0' & X"3D" => keys(4)(3) <= release; -- 7
+					when '0' & X"36" => keys(4)(4) <= release; -- 6
+					
+					when '0' & X"4D" => keys(5)(0) <= release; -- P
+					when '0' & X"44" => keys(5)(1) <= release; -- O
+					when '0' & X"43" => keys(5)(2) <= release; -- I
+					when '0' & X"3C" => keys(5)(3) <= release; -- U
+					when '0' & X"35" => keys(5)(4) <= release; -- Y
+					
+					when '0' & X"5A" => keys(6)(0) <= release; -- ENTER
+					when '0' & X"4B" => keys(6)(1) <= release; -- L
+					when '0' & X"42" => keys(6)(2) <= release; -- K
+					when '0' & X"3B" => keys(6)(3) <= release; -- J
+					when '0' & X"33" => keys(6)(4) <= release; -- H
+					
+					when '0' & X"29" => keys(7)(0) <= release; -- SPACE
+					when '1' & X"14" => keys(7)(1) <= release; -- Right CTRL (Symbol Shift)
+					when '0' & X"3A" => keys(7)(2) <= release; -- M
+					when '0' & X"31" => keys(7)(3) <= release; -- N
+					when '0' & X"32" => keys(7)(4) <= release; -- B
 
-				when X"14" => keys(2)(0) <= '0'; -- Q
-				when X"1a" => keys(2)(1) <= '0'; -- W
-				when X"08" => keys(2)(2) <= '0'; -- E
-				when X"15" => keys(2)(3) <= '0'; -- R
-				when X"17" => keys(2)(4) <= '0'; -- T
-
-				when X"1e" => keys(3)(0) <= '0'; -- 1
-				when X"1f" => keys(3)(1) <= '0'; -- 2
-				when X"20" => keys(3)(2) <= '0'; -- 3
-				when X"21" => keys(3)(3) <= '0'; -- 4
-				when X"22" => keys(3)(4) <= '0'; -- 5
-
-				when X"27" => keys(4)(0) <= '0'; -- 0
-				when X"26" => keys(4)(1) <= '0'; -- 9
-				when X"25" => keys(4)(2) <= '0'; -- 8
-				when X"24" => keys(4)(3) <= '0'; -- 7
-				when X"23" => keys(4)(4) <= '0'; -- 6
-
-				when X"13" => keys(5)(0) <= '0'; -- P
-				when X"12" => keys(5)(1) <= '0'; -- O
-				when X"0c" => keys(5)(2) <= '0'; -- I
-				when X"18" => keys(5)(3) <= '0'; -- U
-				when X"1c" => keys(5)(4) <= '0'; -- Y
-
-				when X"28" => keys(6)(0) <= '0'; -- ENTER
-				when X"0f" => keys(6)(1) <= '0'; -- L
-				when X"0e" => keys(6)(2) <= '0'; -- K
-				when X"0d" => keys(6)(3) <= '0'; -- J
-				when X"0b" => keys(6)(4) <= '0'; -- H
-
-				when X"2c" => keys(7)(0) <= '0'; -- SPACE
-				when X"e4" => keys(7)(1) <= '0'; -- CTRL (Symbol Shift)
-				when X"10" => keys(7)(2) <= '0'; -- M
-				when X"11" => keys(7)(3) <= '0'; -- N
-				when X"05" => keys(7)(4) <= '0'; -- B
-
-				-- Cursor keys
-				when X"50" =>
-					keys(0)(0) <= '0'; -- Left (CAPS 5)
-					keys(3)(4) <= '0';
-				when X"51" =>
-					keys(0)(0) <= '0'; -- Down (CAPS 6)
-					keys(4)(4) <= '0';
-				when X"52" =>
-					keys(0)(0) <= '0'; -- Up (CAPS 7)
-					keys(4)(3) <= '0';
-				when X"4f" =>
-					keys(0)(0) <= '0'; -- Right (CAPS 8)
-					keys(4)(2) <= '0';
-
-				-- Other special keys sent to the ULA as key combinations
-				when X"2a" =>
-					keys(0)(0) <= '0'; -- Backspace (CAPS 0)
-					keys(4)(0) <= '0';
-				when X"39" =>
-					keys(0)(0) <= '0'; -- Caps lock (CAPS 2)
-					keys(3)(1) <= '0';
-				when X"2b" =>
-					keys(0)(0) <= '0'; -- Tab (CAPS SPACE)
-					keys(7)(0) <= '0';
-				when X"37" =>
-					keys(7)(2) <= '0'; -- .
-					keys(7)(1) <= '0';
-				when X"2d" =>
-					keys(6)(3) <= '0'; -- -
-					keys(7)(1) <= '0';
-				when X"35" =>
-					keys(3)(0) <= '0'; -- ` (EDIT)
-					keys(0)(0) <= '0';
-				when X"36" =>
-					keys(7)(3) <= '0'; -- ,
-					keys(7)(1) <= '0';
-				when X"33" =>
-					keys(5)(1) <= '0'; -- ;
-					keys(7)(1) <= '0';
-				when X"34" =>
-					keys(5)(0) <= '0'; -- "
-					keys(7)(1) <= '0';
-				when X"31" =>
-					keys(0)(1) <= '0'; -- :
-					keys(7)(1) <= '0';
-				when X"2e" =>
-					keys(6)(1) <= '0'; -- =
-					keys(7)(1) <= '0';
-				when X"2f" =>
-					keys(4)(2) <= '0'; -- (
-					keys(7)(1) <= '0';
-				when X"30" =>
-					keys(4)(1) <= '0'; -- )
-					keys(7)(1) <= '0';
-				when X"38" =>
-					keys(0)(3) <= '0'; -- ?
-					keys(7)(1) <= '0';
-				--------------------------------------------
-				-- Kempston keys
-				when X"5e" => keys(8)(0) <= '1'; -- [6] (Right)
-				when X"5c" => keys(8)(1) <= '1'; -- [4] (Left)
-				when X"5a" => keys(8)(2) <= '1'; -- [2] (Down)
-				when X"60" => keys(8)(3) <= '1'; -- [8] (Up)
-				when X"62" => keys(8)(4) <= '1'; -- [0] (Fire)
-		
-				-- Soft keys
-				when X"3a" => keys(9)(0) <= '1'; -- F1
-				when X"3b" => keys(9)(1) <= '1'; -- F2
-				when X"3c" => keys(9)(2) <= '1'; -- F3
-				when X"3d" => keys(9)(3) <= '1'; -- F4
-				when X"3e" => keys(9)(4) <= '1'; -- F5
-				when X"3f" => keys(10)(0) <= '1'; -- F6
-				when X"40" => keys(10)(1) <= '1'; -- F7
-				when X"41" => keys(10)(2) <= '1'; -- F8
-				when X"42" => keys(10)(3) <= '1'; -- F9
-				when X"43" => keys(10)(4) <= '1'; -- F10
-				when X"44" => keys(11)(0) <= '1'; -- F11
-				when X"45" => keys(11)(1) <= '1'; -- F12
-				 
-				-- Hardware keys
-				when X"47" => keys(11)(2) <= '1'; -- Scroll Lock (RESET_I)
-				when X"48" => keys(11)(3) <= '1'; -- Pause
-				when X"65" => keys(11)(4) <= '1'; -- WinMenu
+					-- Kempston keys
+					when '0' & X"74" =>	key_joy(0) <= not release; -- [6] (Right)
+					when '0' & X"6B" =>	key_joy(1) <= not release; -- [4] (Left)
+					when '0' & X"73" =>	key_joy(2) <= not release; -- [5] (Down)
+					when '0' & X"75" =>	key_joy(3) <= not release; -- [8] (Up)
+					when '0' & X"14" =>	key_joy(4) <= not release; -- Left Control (Fire)
+					
+					-- Cursor keys - these are actually extended (E0 xx), but
+					-- the scancodes for the numeric keypad cursor keys are
+					-- are the same but without the extension, so we'll accept
+					-- the codes whether they are extended or not
+					when '1' & X"6B" => 	keys(0)(0) <= release; -- Left (CAPS 5)
+								keys(3)(4) <= release;
+					when '1' & X"72" =>	keys(0)(0) <= release; -- Down (CAPS 6)
+								keys(4)(4) <= release;
+					when '1' & X"75" =>	keys(0)(0) <= release; -- Up (CAPS 7)
+								keys(4)(3) <= release;
+					when '1' & X"74" =>	keys(0)(0) <= release; -- Right (CAPS 8)
+								keys(4)(2) <= release;
 								
-				when others => null;
-			end case;
+					-- Other special keys sent to the ULA as key combinations
+					when '0' & X"66" =>	keys(0)(0) <= release; -- Backspace (CAPS 0)
+								keys(4)(0) <= release;
+					when '0' & X"58" =>	keys(0)(0) <= release; -- Caps lock (CAPS 2)
+								keys(3)(1) <= release;
+					when '0' & X"76" =>	keys(0)(0) <= release; -- Escape (CAPS SPACE)
+								keys(7)(0) <= release;
+					when '0' & X"49" =>	keys(7)(2) <= release; -- .
+								keys(7)(1) <= release;
+					when '0' & X"71" =>	keys(7)(2) <= release; -- .
+								keys(7)(1) <= release;
+					when '0' & X"7C" =>	keys(7)(4) <= release; -- *
+								keys(7)(1) <= release;
+					when '0' & X"79" =>	keys(6)(2) <= release; -- +
+								keys(7)(1) <= release;
+					when '0' & X"7B" =>	keys(6)(3) <= release; -- -
+								keys(7)(1) <= release;
+					when '0' & X"4E" =>	keys(6)(3) <= release; -- -
+								keys(7)(1) <= release;
+					when '0' & X"0D" =>	keys(3)(0) <= release; -- Tab (EDIT)
+								keys(0)(0) <= release;
+					when '0' & X"41" =>	keys(7)(3) <= release; -- ,
+								keys(7)(1) <= release;
+					when '0' & X"4C" =>	keys(5)(1) <= release; -- ;
+								keys(7)(1) <= release;
+					when '0' & X"52" =>	keys(5)(0) <= release; -- "
+								keys(7)(1) <= release;
+					when '0' & X"5D" =>	keys(0)(1) <= release; -- :
+								keys(7)(1) <= release;
+					when '0' & X"55" =>	keys(6)(1) <= release; -- =
+								keys(7)(1) <= release;
+					when '0' & X"54" =>	keys(4)(2) <= release; -- (
+								keys(7)(1) <= release;
+					when '0' & X"5B" =>	keys(4)(1) <= release; -- )
+								keys(7)(1) <= release;
+
+					-- Hardware keys
+					when '0' & X"07" =>	key_f(0) <= not release; -- F12
+					when '0' & X"78" =>	key_f(1) <= not release; -- F11
+					when '1' & X"7c" =>	key_f(2) <= not release; -- PrtScr
+					when '0' & X"7e" =>	key_f(3) <= not release; -- Scroll Lock
+					when '1' & X"7e" =>	key_f(4) <= not release; -- Pause
+					 
+					when others => null;
+				end case;
+			end if;
 		end if;
 	end process;
 
