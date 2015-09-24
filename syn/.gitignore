@@ -1,0 +1,17 @@
+db/
+incremental_db/
+
+*.rpt
+*.done
+*.smsg
+*.summary
+*.jdi
+*.pin
+*.pof
+*.sof
+*.qws
+
+PLLJ_PLLSPE_INFO.txt
+
+qmegawiz_errors_log.txt
+.qsys_edit
