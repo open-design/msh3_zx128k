@@ -67,14 +67,6 @@ set_global_assignment -name CYCLONEII_OPTIMIZATION_TECHNIQUE BALANCED
 set_global_assignment -name SYNTH_TIMING_DRIVEN_SYNTHESIS ON
 set_global_assignment -name SYNCHRONIZER_IDENTIFICATION OFF
 set_global_assignment -name TIMEQUEST_DO_CCPP_REMOVAL ON
-set_global_assignment -name ENABLE_OCT_DONE OFF
-set_global_assignment -name FLOW_ENABLE_POWER_ANALYZER ON
-set_global_assignment -name POWER_DEFAULT_INPUT_IO_TOGGLE_RATE "12.5 %"
-set_global_assignment -name EXTERNAL_FLASH_FALLBACK_ADDRESS 00000000
-set_global_assignment -name INTERNAL_FLASH_UPDATE_MODE "SINGLE COMP IMAGE WITH ERAM"
-
-set_location_assignment PIN_25 -to NRESET
-set_instance_assignment -name IO_STANDARD "2.5 V SCHMITT TRIGGER" -to NRESET
 
 set_location_assignment PIN_26 -to CLK_100MHZ
 
@@ -83,11 +75,6 @@ set_location_assignment PIN_98 -to DAC_OUT_R
 
 set_location_assignment PIN_99 -to PS2_KBCLK
 set_location_assignment PIN_100 -to PS2_KBDAT
-
-set_location_assignment PIN_105 -to SD_SI
-set_location_assignment PIN_106 -to SD_SO
-set_location_assignment PIN_110 -to SD_CLK
-set_location_assignment PIN_111 -to SD_NCS
 
 set_location_assignment PIN_132 -to HDMI_D2
 set_location_assignment PIN_131 -to HDMI_D2N
@@ -98,13 +85,60 @@ set_location_assignment PIN_125 -to HDMI_D0N
 set_location_assignment PIN_124 -to HDMI_CLK
 set_location_assignment PIN_120 -to HDMI_CLKN
 
-set_global_assignment -name QIP_FILE ../rtl/ram/ram16.qip
+set_location_assignment PIN_25 -to NRESET
+set_instance_assignment -name IO_STANDARD "2.5 V SCHMITT TRIGGER" -to NRESET
+
+
+set_location_assignment PIN_123 -to DRAM_A[12]
+
+set_location_assignment PIN_51 -to DRAM_A[11]
+set_location_assignment PIN_55 -to DRAM_A[10]
+set_location_assignment PIN_50 -to DRAM_A[9]
+set_location_assignment PIN_49 -to DRAM_A[8]
+set_location_assignment PIN_46 -to DRAM_A[7]
+set_location_assignment PIN_44 -to DRAM_A[6]
+set_location_assignment PIN_43 -to DRAM_A[5]
+set_location_assignment PIN_42 -to DRAM_A[4]
+set_location_assignment PIN_61 -to DRAM_A[3]
+set_location_assignment PIN_60 -to DRAM_A[2]
+set_location_assignment PIN_58 -to DRAM_A[1]
+set_location_assignment PIN_57 -to DRAM_A[0]
+set_location_assignment PIN_53 -to DRAM_BA[1]
+set_location_assignment PIN_52 -to DRAM_BA[0]
+set_location_assignment PIN_41 -to DRAM_CLK
+set_location_assignment PIN_27 -to DRAM_DQ[15]
+set_location_assignment PIN_28 -to DRAM_DQ[14]
+set_location_assignment PIN_29 -to DRAM_DQ[13]
+set_location_assignment PIN_30 -to DRAM_DQ[12]
+set_location_assignment PIN_32 -to DRAM_DQ[11]
+set_location_assignment PIN_33 -to DRAM_DQ[10]
+set_location_assignment PIN_38 -to DRAM_DQ[9]
+set_location_assignment PIN_39 -to DRAM_DQ[8]
+set_location_assignment PIN_66 -to DRAM_DQ[7]
+set_location_assignment PIN_69 -to DRAM_DQ[6]
+set_location_assignment PIN_70 -to DRAM_DQ[5]
+set_location_assignment PIN_74 -to DRAM_DQ[4]
+set_location_assignment PIN_75 -to DRAM_DQ[3]
+set_location_assignment PIN_76 -to DRAM_DQ[2]
+set_location_assignment PIN_77 -to DRAM_DQ[1]
+set_location_assignment PIN_80 -to DRAM_DQ[0]
+set_location_assignment PIN_40 -to DRAM_DQM[1]
+set_location_assignment PIN_65 -to DRAM_DQM[0]
+set_location_assignment PIN_63 -to DRAM_NCAS
+set_location_assignment PIN_62 -to DRAM_NRAS
+set_location_assignment PIN_64 -to DRAM_NWE
+
+set_location_assignment PIN_110 -to SD_CLK
+set_location_assignment PIN_111 -to SD_NCS
+set_location_assignment PIN_105 -to SD_SI
+set_location_assignment PIN_106 -to SD_SO
+
 set_global_assignment -name QIP_FILE ../rtl/adc/my_adc/synthesis/my_adc.qip
-set_global_assignment -name QIP_FILE ../rtl/ram/ram32.qip
-set_global_assignment -name QIP_FILE ../rtl/ram/ram64.qip
 set_global_assignment -name VHDL_FILE ../rtl/ps2/io_ps2_mouse.vhd
 set_global_assignment -name VHDL_FILE ../rtl/ps2/io_ps2_keyboard.vhd
 set_global_assignment -name VHDL_FILE ../rtl/ps2/io_ps2_com.vhd
+set_global_assignment -name QIP_FILE ../rtl/pll/altpll1.qip
+set_global_assignment -name QIP_FILE ../rtl/ram/rom0.qip
 set_global_assignment -name VHDL_FILE ../rtl/ssg/ay8910.vhd
 set_global_assignment -name VHDL_FILE ../rtl/divmmc/divmmc.vhd
 set_global_assignment -name VHDL_FILE ../rtl/zx.vhd
@@ -113,7 +147,8 @@ set_global_assignment -name VHDL_FILE ../rtl/hdmi/serializer.vhd
 set_global_assignment -name VHDL_FILE ../rtl/hdmi/hdmi.vhd
 set_global_assignment -name VHDL_FILE ../rtl/hdmi/encoder.vhd
 set_global_assignment -name VHDL_FILE ../rtl/keyboard/keyboard.vhd
-set_global_assignment -name VHDL_FILE ../rtl/pll/altpll1.vhd
+set_global_assignment -name VHDL_FILE ../rtl/ram/ram.vhd
+set_global_assignment -name VHDL_FILE ../rtl/sdram/sdram.vhd
 set_global_assignment -name VHDL_FILE ../rtl/t80/T80CPU.vhd
 set_global_assignment -name VHDL_FILE ../rtl/t80/T80_Reg.vhd
 set_global_assignment -name VHDL_FILE ../rtl/t80/T80_Pack.vhd
@@ -121,7 +156,8 @@ set_global_assignment -name VHDL_FILE ../rtl/t80/T80_MCode.vhd
 set_global_assignment -name VHDL_FILE ../rtl/t80/T80_ALU.vhd
 set_global_assignment -name VHDL_FILE ../rtl/t80/T80.vhd
 set_global_assignment -name VHDL_FILE ../rtl/video/vga.vhd
-set_global_assignment -name QIP_FILE ../rtl/ram/ram.qip
-set_global_assignment -name QIP_FILE ../rtl/ram/rom0.qip
 set_global_assignment -name QIP_FILE ../rtl/ram/rom1.qip
+set_global_assignment -name ENABLE_OCT_DONE ON
+set_global_assignment -name EXTERNAL_FLASH_FALLBACK_ADDRESS 00000000
+set_global_assignment -name INTERNAL_FLASH_UPDATE_MODE "SINGLE IMAGE WITH ERAM"
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top
