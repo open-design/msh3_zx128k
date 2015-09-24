@@ -50,6 +50,18 @@
 -- ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 -- POSSIBILITY OF SUCH DAMAGE.
 
+-- Adapted By Ynicky for Marsohod3
+--		CPU: T80@4MHz
+--		RAM: M9K 56K (32K ROM + 8K ROM + 16K RAM)
+--		SDRAM: 640K (128K + 512K, MT48LC4M16A2)
+--		Video: HDMI 640x480@60Hz(ZX-Spectrum screen x2 = H:32+256+32; V=24+192+24)
+--		Int: 60Hz (h_sync_on and v_sync_on)
+--		Sound: Stereo (Delta-sigma) AY3-8910 + Beeper
+--		Keyboard: PS/2 Keyboard (ScrollLock=CPU Reset, F5=NMI)
+--		DivMMC: 512K (Press F5=Go to ESXDOS)
+--		Tape input: through built-in ADC
+-------------------------------------------------------------------------------
+
 library IEEE; 
 use IEEE.std_logic_1164.all; 
 use IEEE.std_logic_unsigned.all;
@@ -57,14 +69,12 @@ use IEEE.numeric_std.all;
 
 entity zx is
 port (
-	-- Clock (50MHz)
-	CLK_50MHZ	: in std_logic;
-	-- USB (VNC2)
-	USB_NRESET	: in std_logic;
-	USB_TX		: in std_logic;
+	-- Clock (100MHz)
+	CLK_100MHZ	: in std_logic;
+	NRESET	: in std_logic;
 	-- SDRAM
 	DRAM_DQ		: inout std_logic_vector(15 downto 0);
-	DRAM_A		: out std_logic_vector(12 downto 0);
+	DRAM_A		: out std_logic_vector(11 downto 0);
 	DRAM_CLK	: out std_logic;
 	DRAM_NCAS	: out std_logic;
 	DRAM_NRAS	: out std_logic;
@@ -73,10 +83,16 @@ port (
 	DRAM_DQM	: out std_logic_vector(1 downto 0);
 	-- HDMI
 	HDMI_D0		: out std_logic;
+	HDMI_D0N		: out std_logic;
 	HDMI_D1		: out std_logic;
-	HDMI_D1N	: out std_logic := '0';
+	HDMI_D1N	: out std_logic;
 	HDMI_D2		: out std_logic;
+	HDMI_D2N		: out std_logic;
 	HDMI_CLK	: out std_logic;
+	HDMI_CLKN	: out std_logic;
+	-- PS/2
+	PS2_KBCLK	: inout std_logic;
+	PS2_KBDAT	: inout std_logic;
 	-- SD
 	SD_SO		: in std_logic;
 	SD_CLK		: out std_logic;
@@ -88,7 +104,15 @@ port (
 end zx;
 
 architecture rtl of zx is
-
+-- HDMI
+signal sHDMI_D0	: std_logic;
+signal sHDMI_D0N	: std_logic;
+signal sHDMI_D1	: std_logic;
+signal sHDMI_D1N	: std_logic;
+signal sHDMI_D2	: std_logic;
+signal sHDMI_D2N	: std_logic;
+signal sHDMI_CLK	: std_logic;
+signal sHDMI_CLKN	: std_logic;
 -- CPU
 signal cpu_reset	: std_logic;
 signal cpu_addr		: std_logic_vector(15 downto 0);
@@ -105,7 +129,7 @@ signal cpu_rfsh		: std_logic;
 -- Memory
 signal rom0_data_o	: std_logic_vector(7 downto 0);
 signal rom1_data_o	: std_logic_vector(7 downto 0);
-signal ram_addr		: std_logic_vector(11 downto 0);
+signal ram_addr		: std_logic_vector(10 downto 0);
 signal mux		: std_logic_vector(3 downto 0);
 -- Port
 signal port_xxfe_reg	: std_logic_vector(7 downto 0);
@@ -123,7 +147,6 @@ signal vga_vsync	: std_logic;
 signal vga_blank	: std_logic;
 signal vga_rgb		: std_logic_vector(5 downto 0);
 signal vga_int		: std_logic;
-signal vga_hcnt		: std_logic_vector(9 downto 0);
 signal vram_wr		: std_logic;
 signal vram_scr		: std_logic;
 -- Clock
@@ -131,13 +154,10 @@ signal clk_bus		: std_logic;
 signal clk_vga		: std_logic;
 signal clk_hdmi		: std_logic;
 signal clk_cpu		: std_logic;
-signal clk_divmmc	: std_logic;
 signal clk_ssg		: std_logic;
 -- System
 signal reset		: std_logic;
 signal areset		: std_logic;
-signal key_reset	: std_logic;
-signal locked0		: std_logic;
 signal locked1		: std_logic;
 signal selector		: std_logic_vector(3 downto 0);
 signal key_f		: std_logic_vector(12 downto 1);
@@ -160,29 +180,64 @@ signal ssg_ch_b		: std_logic_vector(7 downto 0);
 signal ssg_ch_c		: std_logic_vector(7 downto 0);
 signal dac_left		: std_logic_vector(8 downto 0);
 signal dac_right	: std_logic_vector(8 downto 0);
+-- Tape input from ADC
+signal tape_in		: std_logic;
+signal adc_d		: std_logic_vector(11 downto 0);
 
-signal ecc		: std_logic_vector(7 downto 0);
+COMPONENT fiftyfivenm_adcblock_top_wrapper
+GENERIC (analog_input_pin_mask : INTEGER;
+			clkdiv : INTEGER;
+			device_partname_fivechar_prefix : STRING;
+			hard_pwd : INTEGER;
+			is_this_first_or_second_adc : INTEGER;
+			prescalar : INTEGER;
+			refsel : INTEGER;
+			tsclkdiv : INTEGER;
+			tsclksel : INTEGER
+			);
+	PORT(soc : IN STD_LOGIC;
+		 usr_pwd : IN STD_LOGIC;
+		 tsen : IN STD_LOGIC;
+		 clkin_from_pll_c0 : IN STD_LOGIC;
+		 chsel : IN STD_LOGIC_VECTOR(4 DOWNTO 0);
+		 eoc : OUT STD_LOGIC;
+		 clkout_adccore : OUT STD_LOGIC;
+		 dout : OUT STD_LOGIC_VECTOR(11 DOWNTO 0)
+	);
+END COMPONENT;
 
 begin
 
+-- ADC
+U0 : fiftyfivenm_adcblock_top_wrapper
+GENERIC MAP(analog_input_pin_mask => 0,
+			clkdiv => 1, --- 2 MHz
+			device_partname_fivechar_prefix => "10M50",
+			hard_pwd => 0,
+			is_this_first_or_second_adc => 1,
+			prescalar => 0,
+			refsel => 0,
+			tsclkdiv => 0,
+			tsclksel => 0
+			)
+PORT MAP(soc => '1',
+		 usr_pwd => '0',
+		 tsen => '1',
+		 clkin_from_pll_c0 => clk_ssg,
+		 chsel => "00000",
+		 dout => adc_d);
+
 -- PLL
-U0: entity work.altpll0
-port map (
-	areset		=> areset,
-	locked		=> locked0,
-	inclk0		=> CLK_50MHZ,	-- 50.0 MHz
-	c0		=> clk_vga,	-- 25.0 MHz
-	c1		=> clk_hdmi);	-- 125.0 MHz
-	
 U1: entity work.altpll1
 port map (
 	areset		=> areset,
 	locked		=> locked1,
-	inclk0		=> CLK_50MHZ,	-- 50.0MHz
-	c0		=> clk_bus,	-- 84.0MHz
-	c1		=> clk_cpu,	-- 3.5MHz
-	c2		=> clk_divmmc,	-- 28.0MHz
-	c3		=> clk_ssg);	-- 1.75MHz
+	inclk0	=> CLK_100MHZ,	-- 100.0 MHz
+	c0			=> clk_hdmi,	-- 125.0 MHz
+	c1			=> clk_bus,		-- 100.0 MHz
+	c2			=> clk_vga,		-- 25.0 MHz
+	c3			=> clk_cpu,		-- 4.0 MHz
+	c4			=> clk_ssg);	-- 2.0 MHz
 
 -- ROM 32K
 U2: entity work.rom0
@@ -237,21 +292,23 @@ port map (
 	ADDR_O		=> vga_addr,
 	BLANK_O		=> vga_blank,
 	RGB_O		=> vga_rgb,	-- RRGGBB
-	HCNT_O		=> vga_hcnt,
+	HCNT_O		=> open,
 	HSYNC_O		=> vga_hsync,
 	VSYNC_O		=> vga_vsync);
 	
 -- Keyboard
 U6: entity work.keyboard
 port map(
-	CLK_I		=> clk_bus,
-	RESET_I		=> areset,
-	ADDR_I		=> cpu_addr(15 downto 8),
-	KEYB_O		=> kb_do_bus,
-	KEYF_O		=> kb_f_bus,
-	KEYJOY_O	=> kb_joy_bus,
-	KEYRESET_O	=> key_reset,
-	RX_I		=> USB_TX);
+	CLK			=> clk_bus,
+	RESET			=> reset,
+	A				=> cpu_addr(15 downto 8),
+	KEYB			=> kb_do_bus,
+	KEYF			=> kb_f_bus(5 downto 1),
+	KEYJOY		=> kb_joy_bus,
+	KEYLED		=> "000",
+	SCANCODE		=> open,
+	PS2_KBCLK	=> PS2_KBCLK,
+	PS2_KBDAT	=> PS2_KBDAT);
 	
 -- Delta-Sigma
 U7: entity work.dac
@@ -280,60 +337,14 @@ port map(
 	BLANK_I		=> vga_blank,
 	HSYNC_I		=> vga_hsync,
 	VSYNC_I		=> vga_vsync,
-	HB_I		=>
--- Packets header 2:
-			  X"4A" & X"00" & X"00" & X"01" &	-- ECC(31..24), HB2(23..16), HB1(15..8), HB0(7..0)
--- Packets header 1:			   
--- 00000000 HB0 Packet Type = 0x02
--- 00000000 HB1 0 0 0 layout sample_present.sp3 sample_present.sp2 sample_present.sp1 sample_present.sp0
--- 00000000 HB2 B.3 B.2 B.1 B.0 sample_flat.sp3 sample_flat.sp2 sample_flat.sp1 sample_flat.sp0
--- 00000000 ECC
-			   X"D6" & X"10" & X"01" & X"02" &	-- ECC(31..24), HB2(23..16), HB1(15..8), HB0(7..0)
--- Packets header 0:
--- 00000000 HB0 Packet Type = 0x84
--- 00000000 HB1 Version Number = 0x01
--- 00000000 HB2 Length = 0x0A
--- 00000000 ECC (0x4A)
-			   X"4A" & X"0A" & X"01" & X"84",	-- ECC(31..24), HB2(23..16), HB1(15..8), HB0(7..0)
-	PB_I		=>
--- Packets 2:
-			   X"00" & X"00" & X"00" & X"00" & X"00" & X"00" & X"00" & X"00" &	-- ECC(255..248),PB27(247..240),PB26(239..232),PB25(231..224),PB24(223..216),PB23(215..208),PB22(207..200),PB21(199..192)
-			   X"00" & X"00" & X"00" & X"00" & X"00" & X"00" & X"00" & X"00" &	-- ECC(191..184),PB20(183..176),PB19(175..168),PB18(167..160),PB17(159..152),PB16(151..144),PB15(143..136),PB14(135..128)
-			   X"8A" & X"00" & X"18" & X"00" & X"18" & X"44" & X"02" & X"00" &	-- ECC(127..120),PB13(119..112),PB12(111..104),PB11(103..96),PB10(95..88),PB9(87..80),PB8(79..72),PB7(71..64)
-			   X"8A" & X"00" & X"18" & X"00" & X"18" & X"44" & X"02" & X"00" &	-- ECC(63..56),PB6(55..48),PB5(47..40),PB4(39..32),PB3(31..24),PB2(23..16),PB1(15..8),PB0(7..0)
-			   
--- Packets 1:
---               | 7      | 6    | 5    | 4    | 3    | 2   | 1   | 0    |
--- 00000000 SB0  | L.11   |      |      |      |      |     |     | L.4  |
--- 00000000 SB1  | L.19   |      |      |      |      |     |     | L.12 |
--- 00000000 SB2  | L.27   |      |      |      |      |     |     | L.20 |
--- 00000000 SB3  | R.11   |      |      |      |      |     |     | R.4  |
--- 00000000 SB4  | R.19   |      |      |      |      |     |     | R.12 |
--- 00000000 SB5  | R.27   |      |      |      |      |     |     | R.20 |
--- 00000000 SB6  | Pr     | Cr   | Ur   | Vr   | Pl   | Cl  | Ul  | Vl   |
-			   X"00" & X"00" & X"00" & X"00" & X"00" & X"00" & X"00" & X"00" &	-- ECC(255..248),PB27(247..240),PB26(239..232),PB25(231..224),PB24(223..216),PB23(215..208),PB22(207..200),PB21(199..192)
-			   X"00" & X"00" & X"00" & X"00" & X"00" & X"00" & X"00" & X"00" &	-- ECC(191..184),PB20(183..176),PB19(175..168),PB18(167..160),PB17(159..152),PB16(151..144),PB15(143..136),PB14(135..128)
-			   X"00" & X"00" & X"00" & X"00" & X"00" & X"00" & X"00" & X"00" &	-- ECC(127..120),PB13(119..112),PB12(111..104),PB11(103..96),PB10(95..88),PB9(87..80),PB8(79..72),PB7(71..64)
-			   ecc   & X"4B" & X"00" & X"00" & X"00" & X"00" & port_xxfe_reg(4) & "0000000" & X"00" &	-- ECC(63..56),PB6(55..48),PB5(47..40),PB4(39..32),PB3(31..24),PB2(23..16),PB1(15..8),PB0(7..0)
--- Packets 0:
---               | 7      | 6    | 5    | 4    | 3    | 2   | 1   | 0   |
--- 00000000 PB0  | Checksum                                             |	00 - (84+01+0A + 81) = F0
--- 00000000 PB1  | CT3    | CT2  | CT1  | CT0  | Rsvd | CC2 | CC1 | CC0 |
--- 00000000 PB2  | Reserved (0)         | SF2  | SF1  | SF0 | SS1 | SS0 |
--- 00000000 PB3  | Format depends on coding type (i.e. CT0CT3)          |	Data Byte 3 shall always be set to a value of 0.
--- 00000000 PB4  | CA7    | CA6  | CA5  | CA4  | CA3  | CA2 | CA1 | CA0 |
--- 00000000 PB5  | DM_INH | LSV3 | LSV2 | LSV1 | LSV0 | Reserved (0)    |
--- 00000000 PB6- | Reserved (0)                                         |
--- 00000000 PB27 | Reserved (0)                                         |
-			   X"00" & X"00" & X"00" & X"00" & X"00" & X"00" & X"00" & X"00" &	-- ECC(255..248),PB27(247..240),PB26(239..232),PB25(231..224),PB24(223..216),PB23(215..208),PB22(207..200),PB21(199..192)
-			   X"00" & X"00" & X"00" & X"00" & X"00" & X"00" & X"00" & X"00" &	-- ECC(191..184),PB20(183..176),PB19(175..168),PB18(167..160),PB17(159..152),PB16(151..144),PB15(143..136),PB14(135..128)
-			   X"00" & X"00" & X"00" & X"00" & X"00" & X"00" & X"00" & X"00" &	-- ECC(127..120),PB13(119..112),PB12(111..104),PB11(103..96),PB10(95..88),PB9(87..80),PB8(79..72),PB7(71..64)
-			   X"7D" & X"00" & X"00" & X"00" & X"00" & X"00" & X"01" & X"70",	-- ECC(63..56),PB6(55..48),PB5(47..40),PB4(39..32),PB3(31..24),PB2(23..16),PB1(15..8),PB0(7..0)
-	HCNT_I		=> vga_hcnt,
-	TMDS_D0_O	=> HDMI_D0,
-	TMDS_D1_O	=> HDMI_D1,
-	TMDS_D2_O	=> HDMI_D2,
-	TMDS_CLK_O	=> HDMI_CLK);
+	HDMI_D0_O	=> sHDMI_D0,
+	HDMI_D0N_O	=> sHDMI_D0N,
+	HDMI_D1_O	=> sHDMI_D1,
+	HDMI_D1N_O	=> sHDMI_D1N,
+	HDMI_D2_O	=> sHDMI_D2,
+	HDMI_D2N_O	=> sHDMI_D2N,
+	HDMI_CLK_O	=> sHDMI_CLK,
+	HDMI_CLKN_O	=> sHDMI_CLKN);
 
 -- SDRAM
 U10: entity work.sdram
@@ -365,7 +376,7 @@ port map (
 -- DivMMC
 U12: entity work.divMMC
 port map (
-	CLK_I		=> clk_divmmc,
+	CLK_I		=> clk_vga,
 	EN_I		=> port_7ffd_reg(4),
 	RESET_I		=> reset,
 	ADDR_I		=> cpu_addr,
@@ -400,6 +411,16 @@ port map (
 	
 -------------------------------------------------------------------------------
 -- Формирование глобальных сигналов
+
+HDMI_D0  <= sHDMI_D0;
+HDMI_D0N <= sHDMI_D0N;
+HDMI_D1  <= sHDMI_D1;
+HDMI_D1N <= sHDMI_D1N;
+HDMI_D2  <= sHDMI_D2;
+HDMI_D2N <= sHDMI_D2N;
+HDMI_CLK  <= sHDMI_CLK;
+HDMI_CLKN <= sHDMI_CLKN;
+
 process (clk_bus, inta)
 begin
 	if (inta = '0') then
@@ -409,16 +430,16 @@ begin
 	end if;
 end process;
 
-areset    <= not USB_NRESET;	-- глобальный сброс
-reset     <= areset or key_reset or not locked0 or not locked1;	-- горячий сброс
+areset    <= not NRESET;	-- глобальный сброс
+reset     <= areset or not locked1;	-- горячий сброс
 cpu_reset <= not(reset or kb_f_bus(4));	-- CPU сброс
 inta      <= cpu_iorq or cpu_m1;	-- INTA
 cpu_nmi   <= not(kb_f_bus(5));	-- NMI
 
 -------------------------------------------------------------------------------
 -- Video
-vram_scr <= '1' when (ram_addr = "000000001110") else '0';
-vram_wr  <= '1' when (cpu_mreq = '0' and cpu_wr = '0' and ((ram_addr = "000000001010") or (ram_addr = "000000001110"))) else '0';
+vram_scr <= '1' when (ram_addr = "00000001110") else '0';
+vram_wr  <= '1' when (cpu_mreq = '0' and cpu_wr = '0' and ((ram_addr = "00000001010") or (ram_addr = "00000001110"))) else '0';
 
 -------------------------------------------------------------------------------
 -- Регистры
@@ -463,13 +484,15 @@ selector <=	"0000" when (cpu_mreq = '0' and cpu_rd = '0' and cpu_addr(15 downto 
 		"0111" when (cpu_iorq = '0' and cpu_rd = '0' and cpu_addr = X"FFFD") else	-- TurboSound
 		(others => '1');
 
-process (selector, ssg_data_o, sdram_data_o, rom0_data_o, rom1_data_o, kb_do_bus, kb_joy_bus, port_7ffd_reg, divmmc_data_o)
+tape_in <= '1' when adc_d > 96 else '0' when adc_d < 32;
+
+process (selector, ssg_data_o, sdram_data_o, rom0_data_o, rom1_data_o, kb_do_bus, kb_joy_bus, port_7ffd_reg, divmmc_data_o, tape_in)
 begin
 	case selector is
 		when "0000" => cpu_data_i <= rom0_data_o;	-- ROM
 		when "0001" => cpu_data_i <= rom1_data_o;	-- ESXDOS ROM
 		when "0010" => cpu_data_i <= sdram_data_o;	-- SDRAM
-		when "0011" => cpu_data_i <= "111" & kb_do_bus;	-- D7=не используется; D6=EAR; D5=не используется; D4-D0=отображают состояние определённого полуряда клавиатуры
+		when "0011" => cpu_data_i <= '1' & tape_in & '1' & kb_do_bus;	-- D7=не используется; D6=EAR; D5=не используется; D4-D0=отображают состояние определённого полуряда клавиатуры
 		when "0100" => cpu_data_i <= "000" & kb_joy_bus;	-- D7-D5=0; D4=огонь;  D3=вниз; D2=вверх; D1=вправо; D0=влево
 		when "0101" => cpu_data_i <= port_7ffd_reg;
 		when "0110" => cpu_data_i <= divmmc_data_o;
@@ -485,14 +508,14 @@ mux <= (divmmc_amap or divmmc_e3reg(7)) & cpu_addr(15 downto 13);
 process (mux, port_7ffd_reg, ram_addr, divmmc_e3reg)
 begin
 	case mux is
-		when "1001"        => ram_addr <= "000001" & divmmc_e3reg(5 downto 0);	-- ESXDOS RAM 2000-3FFF
-		when "0010"|"1010" => ram_addr <= "000000001010";	-- Seg1 RAM 4000-5FFF
-		when "0011"|"1011" => ram_addr <= "000000001011";	-- Seg1 RAM 6000-7FFF
-		when "0100"|"1100" => ram_addr <= "000000000100";	-- Seg2 RAM 8000-9FFF
-		when "0101"|"1101" => ram_addr <= "000000000101";	-- Seg2 RAM A000-BFFF
-		when "0110"|"1110" => ram_addr <= "00000000" & port_7ffd_reg(2 downto 0) & '0';	-- Seg3 RAM C000-DFFF
-		when "0111"|"1111" => ram_addr <= "00000000" & port_7ffd_reg(2 downto 0) & '1';	-- Seg3 RAM E000-FFFF
-		when others => ram_addr <= "XXXXXXXXXXXX";
+		when "1001"        => ram_addr <= "00001" & divmmc_e3reg(5 downto 0);	-- ESXDOS RAM 2000-3FFF
+		when "0010"|"1010" => ram_addr <= "00000001010";	-- Seg1 RAM 4000-5FFF
+		when "0011"|"1011" => ram_addr <= "00000001011";	-- Seg1 RAM 6000-7FFF
+		when "0100"|"1100" => ram_addr <= "00000000100";	-- Seg2 RAM 8000-9FFF
+		when "0101"|"1101" => ram_addr <= "00000000101";	-- Seg2 RAM A000-BFFF
+		when "0110"|"1110" => ram_addr <= "0000000" & port_7ffd_reg(2 downto 0) & '0';	-- Seg3 RAM C000-DFFF
+		when "0111"|"1111" => ram_addr <= "0000000" & port_7ffd_reg(2 downto 0) & '1';	-- Seg3 RAM E000-FFFF
+		when others => ram_addr <= "XXXXXXXXXXX";
 	end case;
 end process;
 
@@ -508,7 +531,5 @@ ssg_bdir <= '1' when (cpu_iorq = '0' and cpu_addr(15) = '1' and cpu_addr(1) = '0
 
 dac_left  <= ('0' & ssg_ch_a) + ('0' & ssg_ch_b) + ('0' & port_xxfe_reg(4) & "000000");
 dac_right <= ('0' & ssg_ch_c) + ('0' & ssg_ch_b) + ('0' & port_xxfe_reg(4) & "000000");
-
-ecc <= X"00" when port_xxfe_reg(4) = '0' else X"32";
 
 end rtl;

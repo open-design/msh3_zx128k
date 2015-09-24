@@ -1,0 +1,29 @@
+Info: Starting: Create block symbol file (.bsf)
+Info: qsys-generate C:\Altera\projects\msh3_zx48k_t80_ps2kbd\rtl\adc\my_adc.qsys --block-symbol-file --output-directory=C:\Altera\projects\msh3_zx48k_t80_ps2kbd\rtl\adc\my_adc --family="MAX 10" --part=10M50SAE144C8GES
+Progress: Loading adc/my_adc.qsys
+Progress: Reading input file
+Progress: Adding modular_adc_0 [altera_modular_adc 15.0]
+Progress: Parameterizing module modular_adc_0
+Progress: Building connections
+Progress: Parameterizing connections
+Progress: Validating
+Progress: Done reading input file
+Info: ip-generate succeeded.
+Info: Finished: Create block symbol file (.bsf)
+Info: 
+Info: Starting: Create HDL design files for synthesis
+Info: qsys-generate C:\Altera\projects\msh3_zx48k_t80_ps2kbd\rtl\adc\my_adc.qsys --synthesis=VHDL --output-directory=C:\Altera\projects\msh3_zx48k_t80_ps2kbd\rtl\adc\my_adc\synthesis --family="MAX 10" --part=10M50SAE144C8GES
+Progress: Loading adc/my_adc.qsys
+Progress: Reading input file
+Progress: Adding modular_adc_0 [altera_modular_adc 15.0]
+Progress: Parameterizing module modular_adc_0
+Progress: Building connections
+Progress: Parameterizing connections
+Progress: Validating
+Progress: Done reading input file
+Info: my_adc: Generating my_adc "my_adc" for QUARTUS_SYNTH
+Info: modular_adc_0: "my_adc" instantiated altera_modular_adc "modular_adc_0"
+Info: control_internal: "modular_adc_0" instantiated altera_modular_adc_control "control_internal"
+Info: my_adc: Done "my_adc" with 3 modules, 9 files
+Info: ip-generate succeeded.
+Info: Finished: Create HDL design files for synthesis

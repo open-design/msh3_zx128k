@@ -2,10 +2,11 @@
 -- SDRAM Controller
 -------------------------------------------------------------------------------
 -- Engineer: MVV
+-- Adapted By Ynicky for Marsohod3
 
--- CLK		= 84 MHz	= 11,9047619047619 ns
--- WR/RD	= 6T		= 71,42857142857143 ns
--- RFSH		= 6T		= 71,42857142857143 ns
+-- CLK		= 100 MHz	= 10 ns
+-- WR/RD		= 6T			= 60 ns
+-- RFSH		= 6T			= 60 ns
 
 library IEEE;
 use IEEE.std_logic_1164.all;
@@ -15,7 +16,7 @@ entity sdram is
 port (
 	CLK_I		: in std_logic;
 	-- Memory port
-	ADDR_I		: in std_logic_vector(24 downto 0);
+	ADDR_I		: in std_logic_vector(23 downto 0);
 	DATA_I		: in std_logic_vector(7 downto 0);
 	DATA_O		: out std_logic_vector(7 downto 0);
 	WR_I		: in std_logic;
@@ -29,13 +30,13 @@ port (
 	WE_O		: out std_logic;
 	DQM_O		: out std_logic_vector(1 downto 0);
 	BA_O		: out std_logic_vector(1 downto 0);
-	MA_O		: out std_logic_vector(12 downto 0);
+	MA_O		: out std_logic_vector(11 downto 0);
 	DQ_IO		: inout std_logic_vector(15 downto 0) );
 end sdram;
 
 architecture rtl of sdram is
 	signal state 		: unsigned(4 downto 0) := "00000";
-	signal address 		: std_logic_vector(24 downto 0);
+	signal address 		: std_logic_vector(23 downto 0);
 	signal data_reg		: std_logic_vector(7 downto 0);
 	signal data		: std_logic_vector(7 downto 0);	
 	signal idle1		: std_logic;
@@ -44,7 +45,7 @@ architecture rtl of sdram is
 	signal sdr_cmd		: std_logic_vector(2 downto 0);
 	signal sdr_ba		: std_logic_vector(1 downto 0);
 	signal sdr_dqm		: std_logic_vector(1 downto 0);
-	signal sdr_a		: std_logic_vector(12 downto 0);
+	signal sdr_a		: std_logic_vector(11 downto 0);
 	signal sdr_dq		: std_logic_vector(15 downto 0);
 
 	constant SdrCmd_xx 	: std_logic_vector(2 downto 0) := "111"; -- no operation
@@ -67,7 +68,7 @@ begin
 				-- Init
 				when "00000" =>					-- s00
 					sdr_cmd <= SdrCmd_pr;			-- PRECHARGE
-					sdr_a <= "1111111111111";
+					sdr_a <= "111111111111";
 					sdr_ba <= "00";
 					sdr_dqm <= "11";
 					state <= state + 1;
@@ -76,7 +77,7 @@ begin
 					state <= state + 1;
 				when "01111" =>					-- s0F
 					sdr_cmd <= SdrCmd_ms;			-- LOAD MODE REGISTER
-					sdr_a <= "000" & "1" & "00" & "010" & "0" & "000";				
+					sdr_a <= "00" & "1" & "00" & "010" & "0" & "000";				
 					state <= state + 1;
 				
 				-- Idle
@@ -88,16 +89,16 @@ begin
 						idle1 <= '0';
 						address <= ADDR_I;
 						sdr_cmd <= SdrCmd_ac;		-- ACTIVE
-						sdr_ba <= ADDR_I(11 downto 10);
-						sdr_a <= ADDR_I(24 downto 12);					 
+						sdr_ba <= ADDR_I(9 downto 8);
+						sdr_a <= ADDR_I(21 downto 10);					 
 						state <= "10110";		-- s16 Read
 					elsif (WR_I = '1') then
 						idle1 <= '0';
 						address <= ADDR_I;
 						data <= DATA_I;
 						sdr_cmd <= SdrCmd_ac;		-- ACTIVE
-						sdr_ba <= ADDR_I(11 downto 10);
-						sdr_a <= ADDR_I(24 downto 12);
+						sdr_ba <= ADDR_I(9 downto 8);
+						sdr_a <= ADDR_I(21 downto 10);
 						state <= "11000";		-- s18 Write
 					elsif (RFSH_I = '1') then
 						idle1 <= '0';
@@ -105,19 +106,19 @@ begin
 						state <= "10000";		-- s10
 					end if;
 
-				-- A24 A23 A22 A21 A20 A19 A18 A17 A16 A15 A14 A13 A12 A11 A10 A9 A8 A7 A6 A5 A4 A3 A2 A1 A0
-				-- -----------------------ROW------------------------- BA1 BA0 ----------COLUMN---------- HL		
+				-- A21 A20 A19 A18 A17 A16 A15 A14 A13 A12 A11 A10 A9 A8 A7 A6 A5 A4 A3 A2 A1 A0
+				-- -----------ROW-------------------------------- BA1 BA0 -----COLUMN-------- HL		
 
 				-- Single read - with auto precharge
 				when "10111" =>					-- s17
-					sdr_cmd <= SdrCmd_rd;			-- READ (A10 = 1 enable auto precharge; A8..0 = column)
-					sdr_a <= "0010" & address(9 downto 1);
+					sdr_cmd <= SdrCmd_rd;			-- READ (A10 = 1 enable auto precharge; A7..0 = column)
+					sdr_a <= "0100" & address(8 downto 1);
 					sdr_dqm <= "00";
 					state <= "10010";			-- s12
 				-- Single write - with auto precharge
 				when "11001" =>					-- s19
-					sdr_cmd <= SdrCmd_wr;			-- WRITE (A10 = 1 enable auto precharge; A8..0 = column)
-					sdr_a <= "0010" & address(9 downto 1);
+					sdr_cmd <= SdrCmd_wr;			-- WRITE (A10 = 1 enable auto precharge; A7..0 = column)
+					sdr_a <= "0100" & address(8 downto 1);
 					sdr_dq <= data & data;
 					sdr_dqm <= not address(0) & address(0);
 					state <= "10010";			-- s12
